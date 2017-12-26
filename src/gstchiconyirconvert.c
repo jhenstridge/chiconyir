@@ -88,7 +88,7 @@ G_DEFINE_TYPE(GstChiconyIrConvert, gst_chicony_ir_convert, GST_TYPE_VIDEO_FILTER
  * describe the real formats here.
  */
 
-#define INPUT_FORMAT "YUYV2"
+#define INPUT_FORMAT "YUY2"
 #define OUTPUT_FORMAT "GRAY16_LE"
 
 static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE ("sink",
@@ -103,43 +103,151 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (OUTPUT_FORMAT))
     );
 
+static void
+print_caps (const char *msg, const GstCaps *caps)
+{
+  char *str = gst_caps_to_string (caps);
+
+  g_print("%s: %s\n", msg, str);
+  g_free(str);
+}
+
+static int
+transform_width (GstPadDirection direction, int width)
+{
+  gint64 new_val = width;
+
+  if (direction == GST_PAD_SRC) {
+    new_val = new_val / 8 * 5;
+  } else {
+    new_val = new_val / 5 * 8;
+  }
+  return (int) CLAMP(new_val, 1, G_MAXINT);
+}
+
+static gboolean
+transform_width_value (GstPadDirection direction,
+                       const GValue *src_val,
+                       GValue *dest_val)
+{
+  gboolean ret = TRUE;
+
+  g_value_init (dest_val, G_VALUE_TYPE (src_val));
+  if (G_VALUE_HOLDS_INT (src_val)) {
+    gint ival = g_value_get_int (src_val);
+
+    ival = transform_width (direction, ival);
+    g_value_set_int (dest_val, ival);
+  } else if (GST_VALUE_HOLDS_INT_RANGE (src_val)) {
+    gint min = gst_value_get_int_range_min (src_val);
+    gint max = gst_value_get_int_range_max (src_val);
+
+    min = transform_width (direction, min);
+    max = transform_width (direction, max);
+    if (min >= max) {
+      ret = FALSE;
+      g_value_unset (dest_val);
+    } else {
+      gst_value_set_int_range (dest_val, min, max);
+    }
+  } else if (GST_VALUE_HOLDS_LIST (src_val)) {
+    gint i;
+
+    for (i = 0; i < gst_value_list_get_size (src_val); ++i) {
+      const GValue *list_val;
+      GValue newval = { 0, };
+
+      list_val = gst_value_list_get_value (src_val, i);
+      if (transform_width_value (direction, list_val, &newval))
+        gst_value_list_append_value (dest_val, &newval);
+      g_value_unset (&newval);
+    }
+
+    if (gst_value_list_get_size (dest_val) == 0) {
+      g_value_unset (dest_val);
+      ret = FALSE;
+    }
+  } else {
+    g_value_unset (dest_val);
+    ret = FALSE;
+  }
+
+  return ret;
+}
+
 static GstCaps *
 ir_convert_transform_caps (GstBaseTransform *trans,
                            GstPadDirection direction,
                            GstCaps *caps,
                            GstCaps *filter)
 {
-  GstCaps *result;
+  GstCaps *to, *result;
+  GstCaps *templ;
+  GstPad *other;
   int i, n;
 
-  result = gst_caps_new_empty ();
+  g_print("transform direction: %s\n", direction == GST_PAD_SRC ? "src" : direction == GST_PAD_SINK ? "sink" : "unknown");
+  print_caps("transform in", caps);
+  print_caps("transform filter", filter);
+
+  to = gst_caps_new_empty ();
 
   n = gst_caps_get_size (caps);
   for (i = 0; i < n; i++) {
     GstStructure *st = gst_caps_get_structure (caps, i);
     GstCapsFeatures *f = gst_caps_get_features (caps, i);
-
-    /* If this is already expressed by the existing caps
-     * skip this structure */
-    if (i > 0 && gst_caps_is_subset_structure_full (result, st, f))
-      continue;
+    const GValue *old_width;
+    GValue new_width = { 0, };
 
     st = gst_structure_copy (st);
 
-    switch (direction) {
-    case GST_PAD_SRC:
+    if (direction == GST_PAD_SRC) {
       gst_structure_set (st, "format", G_TYPE_STRING, INPUT_FORMAT, NULL);
-      break;
-    case GST_PAD_SINK:
+    } else {
       gst_structure_set (st, "format", G_TYPE_STRING, OUTPUT_FORMAT, NULL);
-      break;
-    case GST_PAD_UNKNOWN:
-      break;
     }
 
-    gst_caps_append_structure_full (result, st, gst_caps_features_copy (f));
+    old_width = gst_structure_get_value (st, "width");
+    if (old_width) {
+      if (!transform_width_value (direction, old_width, &new_width)) {
+        GST_WARNING_OBJECT (trans, "could not transform width");
+        goto bail;
+      }
+      gst_structure_set_value (st, "width", &new_width);
+      g_value_unset (&new_width);
+    }
+
+    gst_structure_remove_field (st, "colorimetry");
+    gst_structure_remove_field (st, "chroma-site");
+
+    gst_caps_append_structure_full (to, st, gst_caps_features_copy (f));
   }
+
+  /* filter against set allowed caps on the pad */
+  other = (direction == GST_PAD_SINK) ? trans->srcpad : trans->sinkpad;
+  templ = gst_pad_get_pad_template_caps (other);
+  result = gst_caps_intersect (to, templ);
+  gst_caps_unref (to);
+  gst_caps_unref (templ);
+
+  if (result && filter) {
+    GstCaps *intersection;
+
+    GST_DEBUG_OBJECT (trans, "Using filter caps %" GST_PTR_FORMAT, filter);
+    intersection =
+        gst_caps_intersect_full (filter, result, GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref (result);
+    result = intersection;
+    GST_DEBUG_OBJECT (trans, "Intersection %" GST_PTR_FORMAT, result);
+  }
+
+  print_caps("transform out", result);
   return result;
+
+bail:
+  gst_caps_unref (to);
+  to = gst_caps_new_empty ();
+  return to;
 }
 
 static GstCaps *
@@ -149,7 +257,37 @@ ir_convert_fixate_caps (GstBaseTransform *trans,
                         GstCaps *other_caps)
 {
   GstCaps *result = NULL;
+  GstStructure *ins, *outs;
+  int width = 0;
 
+  g_print("fixate direction: %s\n", direction == GST_PAD_SRC ? "src" : direction == GST_PAD_SINK ? "sink" : "unknown");
+  print_caps("fixate in", caps);
+  print_caps("fixate other", other_caps);
+
+  result = gst_caps_intersect (other_caps, caps);
+  if (gst_caps_is_empty (result)) {
+    gst_caps_unref (result);
+    result = other_caps;
+  } else {
+    gst_caps_unref (other_caps);
+  }
+  result = gst_caps_make_writable (result);
+
+  ins = gst_caps_get_structure (caps, 0);
+  outs = gst_caps_get_structure (result, 0);
+
+  if (direction == GST_PAD_SRC) {
+    gst_structure_set (outs, "format", G_TYPE_STRING, INPUT_FORMAT, NULL);
+  } else {
+    gst_structure_set (outs, "format", G_TYPE_STRING, OUTPUT_FORMAT, NULL);
+  }
+
+  gst_structure_get_int (ins, "width", &width);
+  gst_structure_set (outs,
+                     "width", G_TYPE_INT, transform_width (direction, width),
+                     NULL);
+
+  print_caps("fixate out", result);
   return result;
 }
 
@@ -185,6 +323,9 @@ ir_convert_set_info (GstVideoFilter *filter,
                      GstCaps *out_caps,
                      GstVideoInfo *out_info)
 {
+  print_caps("in_caps", in_caps);
+  print_caps("out_caps", out_caps);
+  return TRUE;
 }
 
 static GstFlowReturn
@@ -192,6 +333,7 @@ ir_convert_transform_frame (GstVideoFilter *filter,
                             GstVideoFrame *in_frame,
                             GstVideoFrame *out_frame)
 {
+  return GST_FLOW_OK;
 }
 
 
@@ -199,7 +341,7 @@ ir_convert_transform_frame (GstVideoFilter *filter,
 static void
 gst_chicony_ir_convert_class_init (GstChiconyIrConvertClass * klass)
 {
-  GObjectClass *gobject_class = (GObjectClass *)klass;
+  //GObjectClass *gobject_class = (GObjectClass *)klass;
   GstElementClass *gstelement_class = (GstElementClass *)klass;
   GstBaseTransformClass *basetransform_class = (GstBaseTransformClass *)klass;
   GstVideoFilterClass *videofilter_class = (GstVideoFilterClass *)klass;
@@ -250,15 +392,6 @@ plugin_init (GstPlugin * chiconyirconvert)
   return gst_element_register (chiconyirconvert, "chiconyirconvert", GST_RANK_NONE,
       GST_TYPE_CHICONY_IR_CONVERT);
 }
-
-/* PACKAGE: this is usually set by autotools depending on some _INIT macro
- * in configure.ac and then written into and defined in config.h, but we can
- * just set it ourselves here in case someone doesn't use autotools to
- * compile this code. GST_PLUGIN_DEFINE needs PACKAGE to be defined.
- */
-#ifndef PACKAGE
-#define PACKAGE "myfirstchiconyirconvert"
-#endif
 
 /* gstreamer looks for this structure to register chiconyirconverts
  *
