@@ -330,9 +330,43 @@ ir_convert_set_info (GstVideoFilter *filter,
 
 static GstFlowReturn
 ir_convert_transform_frame (GstVideoFilter *filter,
-                            GstVideoFrame *in_frame,
-                            GstVideoFrame *out_frame)
+                            GstVideoFrame *src_frame,
+                            GstVideoFrame *dest_frame)
 {
+  int i, j;
+  int width, height;
+  int src_stride, dest_stride;
+  const guint8 *src;
+  guint8 *dest;
+
+  width = GST_VIDEO_FRAME_WIDTH (src_frame);
+  height = GST_VIDEO_FRAME_HEIGHT (src_frame);
+  src_stride = GST_VIDEO_FRAME_PLANE_STRIDE (src_frame, 0);
+  dest_stride = GST_VIDEO_FRAME_PLANE_STRIDE (dest_frame, 0);
+
+  src = GST_VIDEO_FRAME_PLANE_DATA (src_frame, 0);
+  dest = GST_VIDEO_FRAME_PLANE_DATA (dest_frame, 0);
+
+  for (j = 0; j < height; j++) {
+    int x = 0;
+    for (i = 0; i < width*2; i += 5) {
+      guint p1 = src[i] | ((guint)(src[i+1] & 0x03) << 8);
+      guint p2 = (src[i+1] >> 2) | ((guint)(src[i+2] & 0x0f) << 6);
+      guint p3 = (src[i+2] >> 4) | ((guint)(src[i+3] & 0x3f) << 4);
+      guint p4 = (src[i+3] >> 6) | ((guint)src[i+4] << 2);
+
+      dest[x++] = (guint8)((p1 & 0x03) << 6 | (p1 >> 4));
+      dest[x++] = (guint8)(p1 >> 2);
+      dest[x++] = (guint8)((p2 & 0x03) << 6 | (p2 >> 4));
+      dest[x++] = (guint8)(p2 >> 2);
+      dest[x++] = (guint8)((p3 & 0x03) << 6 | (p3 >> 4));
+      dest[x++] = (guint8)(p3 >> 2);
+      dest[x++] = (guint8)((p4 & 0x03) << 6 | (p4 >> 4));
+      dest[x++] = (guint8)(p4 >> 2);
+    }
+    src += src_stride;
+    dest += dest_stride;
+  }
   return GST_FLOW_OK;
 }
 
