@@ -1,8 +1,6 @@
 /*
  * GStreamer
- * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
- * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
- * Copyright (C) 2017 James Henstridge <<user@hostname.org>>
+ * Copyright (C) 2017 James Henstridge <james@jamesh.id.au>
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -60,14 +58,14 @@
 #  include <config.h>
 #endif
 
-#include "gstchiconyirconvert.h"
+#include "gstchiconyirdec.h"
 
-GST_DEBUG_CATEGORY_STATIC (gst_chicony_ir_convert_debug);
-#define GST_CAT_DEFAULT gst_chicony_ir_convert_debug
+GST_DEBUG_CATEGORY_STATIC (gst_chicony_ir_dec_debug);
+#define GST_CAT_DEFAULT gst_chicony_ir_dec_debug
 
 static GQuark colorspace_quark;
 
-struct _GstChiconyIrConvert
+struct _GstChiconyIrDec
 {
   GstVideoFilter element;
 
@@ -76,12 +74,12 @@ struct _GstChiconyIrConvert
   gboolean silent;
 };
 
-struct _GstChiconyIrConvertClass
+struct _GstChiconyIrDecClass
 {
   GstVideoFilterClass parent_class;
 };
 
-G_DEFINE_TYPE(GstChiconyIrConvert, gst_chicony_ir_convert, GST_TYPE_VIDEO_FILTER);
+G_DEFINE_TYPE(GstChiconyIrDec, gst_chicony_ir_dec, GST_TYPE_VIDEO_FILTER);
 
 /* the capabilities of the inputs and outputs.
  *
@@ -176,7 +174,7 @@ transform_width_value (GstPadDirection direction,
 }
 
 static GstCaps *
-ir_convert_transform_caps (GstBaseTransform *trans,
+ir_dec_transform_caps (GstBaseTransform *trans,
                            GstPadDirection direction,
                            GstCaps *caps,
                            GstCaps *filter)
@@ -251,7 +249,7 @@ bail:
 }
 
 static GstCaps *
-ir_convert_fixate_caps (GstBaseTransform *trans,
+ir_dec_fixate_caps (GstBaseTransform *trans,
                         GstPadDirection direction,
                         GstCaps *caps,
                         GstCaps *other_caps)
@@ -292,7 +290,7 @@ ir_convert_fixate_caps (GstBaseTransform *trans,
 }
 
 static gboolean
-ir_convert_filter_meta (GstBaseTransform *trans,
+ir_dec_filter_meta (GstBaseTransform *trans,
                         GstQuery *query,
                         GType api,
                         const GstStructure *params)
@@ -302,7 +300,7 @@ ir_convert_filter_meta (GstBaseTransform *trans,
 }
 
 static gboolean
-ir_convert_transform_meta (GstBaseTransform *trans,
+ir_dec_transform_meta (GstBaseTransform *trans,
                            GstBuffer *out_buf,
                            GstMeta *meta,
                            GstBuffer *in_buf)
@@ -317,7 +315,7 @@ ir_convert_transform_meta (GstBaseTransform *trans,
 }
 
 static gboolean
-ir_convert_set_info (GstVideoFilter *filter,
+ir_dec_set_info (GstVideoFilter *filter,
                      GstCaps *in_caps,
                      GstVideoInfo *in_info,
                      GstCaps *out_caps,
@@ -329,7 +327,7 @@ ir_convert_set_info (GstVideoFilter *filter,
 }
 
 static GstFlowReturn
-ir_convert_transform_frame (GstVideoFilter *filter,
+ir_dec_transform_frame (GstVideoFilter *filter,
                             GstVideoFrame *src_frame,
                             GstVideoFrame *dest_frame)
 {
@@ -371,9 +369,9 @@ ir_convert_transform_frame (GstVideoFilter *filter,
 }
 
 
-/* initialize the chiconyirconvert's class */
+/* initialize the chiconyirdec's class */
 static void
-gst_chicony_ir_convert_class_init (GstChiconyIrConvertClass * klass)
+gst_chicony_ir_dec_class_init (GstChiconyIrDecClass * klass)
 {
   //GObjectClass *gobject_class = (GObjectClass *)klass;
   GstElementClass *gstelement_class = (GstElementClass *)klass;
@@ -381,7 +379,7 @@ gst_chicony_ir_convert_class_init (GstChiconyIrConvertClass * klass)
   GstVideoFilterClass *videofilter_class = (GstVideoFilterClass *)klass;
 
   gst_element_class_set_details_simple(gstelement_class,
-    "ChiconyIrConvert",
+    "ChiconyIrDec",
     "Filter/Video/Converter",
     "Decode video from Chicony IR camera",
     "James Henstridge <james@jamesh.id.au>");
@@ -391,13 +389,13 @@ gst_chicony_ir_convert_class_init (GstChiconyIrConvertClass * klass)
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&sink_factory));
 
-  basetransform_class->transform_caps = ir_convert_transform_caps;
-  basetransform_class->fixate_caps = ir_convert_fixate_caps;
-  basetransform_class->filter_meta = ir_convert_filter_meta;
-  basetransform_class->transform_meta = ir_convert_transform_meta;
+  basetransform_class->transform_caps = ir_dec_transform_caps;
+  basetransform_class->fixate_caps = ir_dec_fixate_caps;
+  basetransform_class->filter_meta = ir_dec_filter_meta;
+  basetransform_class->transform_meta = ir_dec_transform_meta;
 
-  videofilter_class->set_info = ir_convert_set_info;
-  videofilter_class->transform_frame = ir_convert_transform_frame;
+  videofilter_class->set_info = ir_dec_set_info;
+  videofilter_class->transform_frame = ir_dec_transform_frame;
 }
 
 /* initialize the new element
@@ -406,36 +404,36 @@ gst_chicony_ir_convert_class_init (GstChiconyIrConvertClass * klass)
  * initialize instance structure
  */
 static void
-gst_chicony_ir_convert_init (GstChiconyIrConvert * filter)
+gst_chicony_ir_dec_init (GstChiconyIrDec * filter)
 {
 }
 
 static gboolean
-plugin_init (GstPlugin * chiconyirconvert)
+plugin_init (GstPlugin * chiconyirdec)
 {
   /* debug category for fltering log messages
    *
-   * exchange the string 'Template chiconyirconvert' with your description
+   * exchange the string 'Template chiconyirdec' with your description
    */
-  GST_DEBUG_CATEGORY_INIT (gst_chicony_ir_convert_debug, "chiconyirconvert",
-      0, "Template chiconyirconvert");
+  GST_DEBUG_CATEGORY_INIT (gst_chicony_ir_dec_debug, "chiconyirdec",
+      0, "Template chiconyirdec");
 
   colorspace_quark = g_quark_from_static_string (
     GST_META_TAG_VIDEO_COLORSPACE_STR);
 
-  return gst_element_register (chiconyirconvert, "chiconyirconvert", GST_RANK_NONE,
-      GST_TYPE_CHICONY_IR_CONVERT);
+  return gst_element_register (chiconyirdec, "chiconyirdec", GST_RANK_NONE,
+      GST_TYPE_CHICONY_IR_DEC);
 }
 
-/* gstreamer looks for this structure to register chiconyirconverts
+/* gstreamer looks for this structure to register chiconyirdecs
  *
- * exchange the string 'Template chiconyirconvert' with your chiconyirconvert description
+ * exchange the string 'Template chiconyirdec' with your chiconyirdec description
  */
 GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
-    chiconyirconvert,
-    "Infrared convert",
+    chiconyirdec,
+    "Infrared dec",
     plugin_init,
     VERSION,
     "LGPL",

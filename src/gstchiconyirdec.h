@@ -41,20 +41,20 @@
  * Boston, MA 02111-1307, USA.
  */
 
-#ifndef __GST_CHICONYIRCONVERT_H__
-#define __GST_CHICONYIRCONVERT_H__
+#ifndef __GST_CHICONYIRDEC_H__
+#define __GST_CHICONYIRDEC_H__
 
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
 G_BEGIN_DECLS
 
-G_DECLARE_FINAL_TYPE(GstChiconyIrConvert, gst_chicony_ir_convert, GST, CHICONY_IR_CONVERT, GstVideoFilter)
+G_DECLARE_FINAL_TYPE(GstChiconyIrDec, gst_chicony_ir_dec, GST, CHICONY_IR_DEC, GstVideoFilter)
 
-#define GST_TYPE_CHICONY_IR_CONVERT (gst_chicony_ir_convert_get_type())
+#define GST_TYPE_CHICONY_IR_DEC (gst_chicony_ir_dec_get_type())
 
-GType gst_chicony_ir_convert_get_type (void);
+GType gst_chicony_ir_dec_get_type (void);
 
 G_END_DECLS
 
-#endif /* __GST_CHICONYIRCONVERT_H__ */
+#endif /* __GST_CHICONYIRDEC_H__ */
