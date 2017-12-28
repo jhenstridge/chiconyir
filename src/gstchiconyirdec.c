@@ -69,9 +69,7 @@ struct _GstChiconyIrDec
 {
   GstVideoFilter element;
 
-  GstPad *sinkpad, *srcpad;
-
-  gboolean silent;
+  gboolean auto_gain;
 };
 
 struct _GstChiconyIrDecClass
@@ -310,11 +308,13 @@ ir_dec_transform_frame (GstVideoFilter *filter,
                         GstVideoFrame *src_frame,
                         GstVideoFrame *dest_frame)
 {
+  GstChiconyIrDec *self = GST_CHICONY_IR_DEC (filter);
   int i, j;
   int width, height;
   int src_stride, dest_stride;
   const guint8 *src;
   guint8 *dest;
+  guint16 max = 1;
 
   width = GST_VIDEO_FRAME_WIDTH (src_frame);
   height = GST_VIDEO_FRAME_HEIGHT (src_frame);
@@ -324,13 +324,39 @@ ir_dec_transform_frame (GstVideoFilter *filter,
   src = GST_VIDEO_FRAME_PLANE_DATA (src_frame, 0);
   dest = GST_VIDEO_FRAME_PLANE_DATA (dest_frame, 0);
 
+  // Calculate maximum pixel value in frame if in auto gain mode
+  if (self->auto_gain) {
+    for (j = 0; j < height; j++) {
+      for (i = 0; i < width*2; i += 5) {
+        guint16 p1 = src[i] | ((guint)(src[i+1] & 0x03) << 8);
+        guint16 p2 = (src[i+1] >> 2) | ((guint)(src[i+2] & 0x0f) << 6);
+        guint16 p3 = (src[i+2] >> 4) | ((guint)(src[i+3] & 0x3f) << 4);
+        guint16 p4 = (src[i+3] >> 6) | ((guint)src[i+4] << 2);
+
+        max = MAX(max, p1);
+        max = MAX(max, p2);
+        max = MAX(max, p3);
+        max = MAX(max, p4);
+      }
+      src += src_stride;
+    }
+    src = GST_VIDEO_FRAME_PLANE_DATA (src_frame, 0);
+  }
+
   for (j = 0; j < height; j++) {
     int x = 0;
     for (i = 0; i < width*2; i += 5) {
-      guint p1 = src[i] | ((guint)(src[i+1] & 0x03) << 8);
-      guint p2 = (src[i+1] >> 2) | ((guint)(src[i+2] & 0x0f) << 6);
-      guint p3 = (src[i+2] >> 4) | ((guint)(src[i+3] & 0x3f) << 4);
-      guint p4 = (src[i+3] >> 6) | ((guint)src[i+4] << 2);
+      guint16 p1 = src[i] | ((guint)(src[i+1] & 0x03) << 8);
+      guint16 p2 = (src[i+1] >> 2) | ((guint)(src[i+2] & 0x0f) << 6);
+      guint16 p3 = (src[i+2] >> 4) | ((guint)(src[i+3] & 0x3f) << 4);
+      guint16 p4 = (src[i+3] >> 6) | ((guint)src[i+4] << 2);
+
+      if (self->auto_gain) {
+        p1 = (float)p1 / max * 0x3ff;
+        p2 = (float)p2 / max * 0x3ff;
+        p3 = (float)p3 / max * 0x3ff;
+        p4 = (float)p4 / max * 0x3ff;
+      }
 
       dest[x++] = (guint8)((p1 & 0x03) << 6 | (p1 >> 4));
       dest[x++] = (guint8)(p1 >> 2);
@@ -347,14 +373,69 @@ ir_dec_transform_frame (GstVideoFilter *filter,
   return GST_FLOW_OK;
 }
 
+enum
+{
+  PROP_0,
+  PROP_AUTO_GAIN,
+};
+
+static void
+ir_dec_get_property (GObject *object,
+                     guint prop_id,
+                     GValue *value,
+                     GParamSpec *pspec)
+{
+  GstChiconyIrDec *self = GST_CHICONY_IR_DEC (object);
+  switch (prop_id) {
+  case PROP_AUTO_GAIN:
+    g_value_set_boolean (value, self->auto_gain);
+    break;
+  default:
+    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+    break;
+  }
+}
+
+static void
+ir_dec_set_property (GObject *object,
+                     guint prop_id,
+                     const GValue *value,
+                     GParamSpec *pspec)
+{
+  GstChiconyIrDec *self = GST_CHICONY_IR_DEC (object);
+  switch (prop_id) {
+  case PROP_AUTO_GAIN:
+    self->auto_gain = g_value_get_boolean (value);
+    break;
+  default:
+    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+    break;
+  }
+}
 
 static void
 gst_chicony_ir_dec_class_init (GstChiconyIrDecClass * klass)
 {
-  //GObjectClass *gobject_class = (GObjectClass *)klass;
+  GObjectClass *gobject_class = (GObjectClass *)klass;
   GstElementClass *gstelement_class = (GstElementClass *)klass;
   GstBaseTransformClass *basetransform_class = (GstBaseTransformClass *)klass;
   GstVideoFilterClass *videofilter_class = (GstVideoFilterClass *)klass;
+
+  gobject_class->get_property = ir_dec_get_property;
+  gobject_class->set_property = ir_dec_set_property;
+
+  basetransform_class->transform_caps = ir_dec_transform_caps;
+  basetransform_class->fixate_caps = ir_dec_fixate_caps;
+  basetransform_class->filter_meta = ir_dec_filter_meta;
+  basetransform_class->transform_meta = ir_dec_transform_meta;
+
+  videofilter_class->set_info = ir_dec_set_info;
+  videofilter_class->transform_frame = ir_dec_transform_frame;
+
+  g_object_class_install_property (gobject_class, PROP_AUTO_GAIN,
+      g_param_spec_boolean ("auto-gain", "Auto Gain",
+          "Automatically increase gain", FALSE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_details_simple(gstelement_class,
     "ChiconyIrDec",
@@ -366,14 +447,6 @@ gst_chicony_ir_dec_class_init (GstChiconyIrDecClass * klass)
       gst_static_pad_template_get (&src_factory));
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&sink_factory));
-
-  basetransform_class->transform_caps = ir_dec_transform_caps;
-  basetransform_class->fixate_caps = ir_dec_fixate_caps;
-  basetransform_class->filter_meta = ir_dec_filter_meta;
-  basetransform_class->transform_meta = ir_dec_transform_meta;
-
-  videofilter_class->set_info = ir_dec_set_info;
-  videofilter_class->transform_frame = ir_dec_transform_frame;
 }
 
 static void
