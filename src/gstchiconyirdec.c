@@ -101,15 +101,6 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (OUTPUT_FORMAT))
     );
 
-static void
-print_caps (const char *msg, const GstCaps *caps)
-{
-  char *str = gst_caps_to_string (caps);
-
-  g_print("%s: %s\n", msg, str);
-  g_free(str);
-}
-
 static int
 transform_width (GstPadDirection direction, int width)
 {
@@ -175,18 +166,14 @@ transform_width_value (GstPadDirection direction,
 
 static GstCaps *
 ir_dec_transform_caps (GstBaseTransform *trans,
-                           GstPadDirection direction,
-                           GstCaps *caps,
-                           GstCaps *filter)
+                       GstPadDirection direction,
+                       GstCaps *caps,
+                       GstCaps *filter)
 {
   GstCaps *to, *result;
   GstCaps *templ;
   GstPad *other;
   int i, n;
-
-  g_print("transform direction: %s\n", direction == GST_PAD_SRC ? "src" : direction == GST_PAD_SINK ? "sink" : "unknown");
-  print_caps("transform in", caps);
-  print_caps("transform filter", filter);
 
   to = gst_caps_new_empty ();
 
@@ -239,7 +226,6 @@ ir_dec_transform_caps (GstBaseTransform *trans,
     GST_DEBUG_OBJECT (trans, "Intersection %" GST_PTR_FORMAT, result);
   }
 
-  print_caps("transform out", result);
   return result;
 
 bail:
@@ -250,17 +236,13 @@ bail:
 
 static GstCaps *
 ir_dec_fixate_caps (GstBaseTransform *trans,
-                        GstPadDirection direction,
-                        GstCaps *caps,
-                        GstCaps *other_caps)
+                    GstPadDirection direction,
+                    GstCaps *caps,
+                    GstCaps *other_caps)
 {
   GstCaps *result = NULL;
   GstStructure *ins, *outs;
   int width = 0;
-
-  g_print("fixate direction: %s\n", direction == GST_PAD_SRC ? "src" : direction == GST_PAD_SINK ? "sink" : "unknown");
-  print_caps("fixate in", caps);
-  print_caps("fixate other", other_caps);
 
   result = gst_caps_intersect (other_caps, caps);
   if (gst_caps_is_empty (result)) {
@@ -285,15 +267,14 @@ ir_dec_fixate_caps (GstBaseTransform *trans,
                      "width", G_TYPE_INT, transform_width (direction, width),
                      NULL);
 
-  print_caps("fixate out", result);
   return result;
 }
 
 static gboolean
 ir_dec_filter_meta (GstBaseTransform *trans,
-                        GstQuery *query,
-                        GType api,
-                        const GstStructure *params)
+                    GstQuery *query,
+                    GType api,
+                    const GstStructure *params)
 {
   /* propose all metadata upstream */
   return TRUE;
@@ -301,9 +282,9 @@ ir_dec_filter_meta (GstBaseTransform *trans,
 
 static gboolean
 ir_dec_transform_meta (GstBaseTransform *trans,
-                           GstBuffer *out_buf,
-                           GstMeta *meta,
-                           GstBuffer *in_buf)
+                       GstBuffer *out_buf,
+                       GstMeta *meta,
+                       GstBuffer *in_buf)
 {
   const GstMetaInfo *info = meta->info;
 
@@ -316,20 +297,18 @@ ir_dec_transform_meta (GstBaseTransform *trans,
 
 static gboolean
 ir_dec_set_info (GstVideoFilter *filter,
-                     GstCaps *in_caps,
-                     GstVideoInfo *in_info,
-                     GstCaps *out_caps,
-                     GstVideoInfo *out_info)
+                 GstCaps *in_caps,
+                 GstVideoInfo *in_info,
+                 GstCaps *out_caps,
+                 GstVideoInfo *out_info)
 {
-  print_caps("in_caps", in_caps);
-  print_caps("out_caps", out_caps);
   return TRUE;
 }
 
 static GstFlowReturn
 ir_dec_transform_frame (GstVideoFilter *filter,
-                            GstVideoFrame *src_frame,
-                            GstVideoFrame *dest_frame)
+                        GstVideoFrame *src_frame,
+                        GstVideoFrame *dest_frame)
 {
   int i, j;
   int width, height;
@@ -369,7 +348,6 @@ ir_dec_transform_frame (GstVideoFilter *filter,
 }
 
 
-/* initialize the chiconyirdec's class */
 static void
 gst_chicony_ir_dec_class_init (GstChiconyIrDecClass * klass)
 {
@@ -398,11 +376,6 @@ gst_chicony_ir_dec_class_init (GstChiconyIrDecClass * klass)
   videofilter_class->transform_frame = ir_dec_transform_frame;
 }
 
-/* initialize the new element
- * instantiate pads and add them to element
- * set pad calback functions
- * initialize instance structure
- */
 static void
 gst_chicony_ir_dec_init (GstChiconyIrDec * filter)
 {
@@ -411,12 +384,8 @@ gst_chicony_ir_dec_init (GstChiconyIrDec * filter)
 static gboolean
 plugin_init (GstPlugin * chiconyirdec)
 {
-  /* debug category for fltering log messages
-   *
-   * exchange the string 'Template chiconyirdec' with your description
-   */
   GST_DEBUG_CATEGORY_INIT (gst_chicony_ir_dec_debug, "chiconyirdec",
-      0, "Template chiconyirdec");
+      0, "Chicony IR decoder");
 
   colorspace_quark = g_quark_from_static_string (
     GST_META_TAG_VIDEO_COLORSPACE_STR);
@@ -425,15 +394,11 @@ plugin_init (GstPlugin * chiconyirdec)
       GST_TYPE_CHICONY_IR_DEC);
 }
 
-/* gstreamer looks for this structure to register chiconyirdecs
- *
- * exchange the string 'Template chiconyirdec' with your chiconyirdec description
- */
 GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
     chiconyirdec,
-    "Infrared dec",
+    "Infrared decoder",
     plugin_init,
     VERSION,
     "LGPL",

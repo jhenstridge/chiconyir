@@ -50,10 +50,8 @@
 G_BEGIN_DECLS
 
 G_DECLARE_FINAL_TYPE(GstChiconyIrDec, gst_chicony_ir_dec, GST, CHICONY_IR_DEC, GstVideoFilter)
-
 #define GST_TYPE_CHICONY_IR_DEC (gst_chicony_ir_dec_get_type())
 
-GType gst_chicony_ir_dec_get_type (void);
 
 G_END_DECLS
 
