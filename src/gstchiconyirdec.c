@@ -70,6 +70,7 @@ struct _GstChiconyIrDec
   GstVideoFilter element;
 
   gboolean auto_gain;
+  int gain;
 };
 
 struct _GstChiconyIrDecClass
@@ -356,6 +357,11 @@ ir_dec_transform_frame (GstVideoFilter *filter,
         p2 = (float)p2 / max * 0x3ff;
         p3 = (float)p3 / max * 0x3ff;
         p4 = (float)p4 / max * 0x3ff;
+      } else if (self->gain != 0) {
+        p1 = CLAMP(p1 << self->gain, 0, 0x3ff);
+        p2 = CLAMP(p2 << self->gain, 0, 0x3ff);
+        p3 = CLAMP(p3 << self->gain, 0, 0x3ff);
+        p4 = CLAMP(p4 << self->gain, 0, 0x3ff);
       }
 
       dest[x++] = (guint8)((p1 & 0x03) << 6 | (p1 >> 4));
@@ -377,6 +383,7 @@ enum
 {
   PROP_0,
   PROP_AUTO_GAIN,
+  PROP_GAIN,
 };
 
 static void
@@ -389,6 +396,9 @@ ir_dec_get_property (GObject *object,
   switch (prop_id) {
   case PROP_AUTO_GAIN:
     g_value_set_boolean (value, self->auto_gain);
+    break;
+  case PROP_GAIN:
+    g_value_set_int (value, self->gain);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -406,6 +416,9 @@ ir_dec_set_property (GObject *object,
   switch (prop_id) {
   case PROP_AUTO_GAIN:
     self->auto_gain = g_value_get_boolean (value);
+    break;
+  case PROP_GAIN:
+    self->gain = g_value_get_int (value);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -435,6 +448,10 @@ gst_chicony_ir_dec_class_init (GstChiconyIrDecClass * klass)
   g_object_class_install_property (gobject_class, PROP_AUTO_GAIN,
       g_param_spec_boolean ("auto-gain", "Auto Gain",
           "Automatically increase gain", FALSE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_GAIN,
+      g_param_spec_int ("gain", "Gain",
+          "Gain", 0, 11, 0,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_details_simple(gstelement_class,
